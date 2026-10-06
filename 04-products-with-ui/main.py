@@ -1,97 +1,92 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import Depends, FastAPI
+from products import Products
+from db import SessionLocal,engine
+import db_models
+from sqlalchemy.orm import session
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
-import database_models
-from database import SessionLocal, engine
-from models import Product
-
-database_models.Base.metadata.create_all(bind=engine)
-
 app = FastAPI()
-
-# CORS for React dev server
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],
+    allow_methods= ["*"],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*"]
 )
+db_models.Base.metadata.create_all(bind=engine)
 
+product=[ 
+    Products(id=1,name= "watch",des= "watch", quantity= 21),
+    Products(id=2,name= "watch1",des= "watch", quantity= 22),
+    Products(id=3,name= "watch",des= "watch", quantity= 23),
+    Products(id=4,name= "watch4",des= "watch", quantity= 24)
+]
+#use to inject on every path function called depency ingestion
 def get_db():
-    db = SessionLocal()
-    try:
+     db=SessionLocal()
+     try:
         yield db
-    finally:
+     finally:     
+        db.close()
+def init_db():
+      db=SessionLocal()
+      try:
+        # FIXED: Check if the table is already populated before inserting
+        if db.query(db_models.Products).count() == 0:
+            # FIXED: Changed variable name to 'item' to avoid overwriting your class name
+            for item in product:
+                db.add(db_models.Products(**item.model_dump())) #unppack from pydanti products to db products
+            db.commit()
+            print("Database successfully seeded!")
+        else:
+            print("Database already has records. Skipping seed step.")
+      except Exception as e:
+        print(f"Error during seeding: {e}")
+      finally:
         db.close()
 
+      #creates only non existing records  
+      #for Products in product:
+           #db.add(db_models.Products(**Products.model_dump())) 
+      #db.commit()
+init_db()            
+      
+@app.get("/products")
+def get_all_products(db: session = Depends(get_db)):
+    #db= SessionLocal()
+    #db.query()
+    db_products= db.query(db_models.Products).all()
+    return db_products
+@app.get("/products/{id}")
+def get_product_by_id(id:int, db: session = Depends(get_db)):
+    db_product=db.query(db_models.Products).filter(db_models.Products.id==id).first()
+    if db_product:
+        return db_product
+    #for i in product:
+          #if (i.id== id):
+                #return i
+@app.post("/products/add")
+def add_new_product(item: Products, db: session = Depends(get_db)):
+      db.add(db_models.Products(**item.model_dump()))
+      db.commit()
+      return product
+@app.put("/products/update/{id}")
+def product_update(id:int, product_update: Products, db: session = Depends(get_db)):
+    db_product=db.query(db_models.Products).filter(db_models.Products.id==id).first()
+    if db_product:
 
-# list of products with 4 products like phones, laptops, pens, tables
-products = [
-    Product(id=1, name="Phone", description="A smartphone", price=699.99, quantity=50),
-    Product(id=2, name="Laptop", description="A powerful laptop", price=999.99, quantity=30),
-    Product(id=3, name="Pen", description="A blue ink pen", price=1.99, quantity=100),
-    Product(id=4, name="Table", description="A wooden table", price=199.99, quantity=20),
-]
-
-product = Product(id=5, name="Chair", description="A comfortable chair", price=89.99, quantity=15)
-
-
-
-
-def init_db():
-    db = SessionLocal()
-
-    existing_count = db.query(database_models.Product).count()
-
-    if existing_count == 0:
-        for product in products:
-            db.add(database_models.Product(**product.model_dump()))
+        db_product.name= product_update.name
         db.commit()
-        print("Database initialized with sample products.")
-        
-    db.close()
-
-init_db()    
-
-@app.get("/products/")
-def get_all_products(db: Session = Depends(get_db)):
-    products = db.query(database_models.Product).all()
-    return products
-
-
-@app.get("/products/{product_id}")
-def get_product_by_id(product_id: int, db: Session = Depends(get_db)):
-    product = db.query(database_models.Product).filter(database_models.Product.id == product_id).first()
-    if product:
-        return product
-    return {"error": "Product not found"}
-
-@app.post("/products/")
-def create_product(product: Product, db: Session = Depends(get_db)):
-    db.add(database_models.Product(**product.model_dump()))
-    db.commit()
-    return {"message": "Product created successfully", "product": product}
-
-@app.put("/products/{product_id}")
-def update_product(product_id: int, product: Product, db: Session = Depends(get_db)):
-    db_product = db.query(database_models.Product).filter(database_models.Product.id == product_id).first()
-    if not db_product:
-        raise HTTPException(status_code=404, detail="Product not found")
-    db_product.name = product.name
-    db_product.description = product.description
-    db_product.price = product.price
-    db_product.quantity = product.quantity
-    db.commit()
-    db.refresh(db_product)
-    return {"message": "Product updated successfully", "product": db_product}
-
-
-@app.delete("/products/{product_id}")
-def delete_product(product_id: int, db: Session = Depends(get_db)):
-    db_product = db.query(database_models.Product).filter(database_models.Product.id == product_id).first()
-    if not db_product:
-        raise HTTPException(status_code=404, detail="Product not found")
-    db.delete(db_product)
-    db.commit()
-    return {"message": "Product deleted successfully"}
+      #for i in range(len(product)):
+            #if product[i].id == id:
+                  #product[i] = product_update
+                  #return product_update
+@app.delete("/products/delete")
+def product_update(id:int, db: session = Depends(get_db)):
+    db_product=db.query(db_models.Products).filter(db_models.Products.id==id).first()
+    if db_product:
+        db.delete(db_product)
+        db.commit()
+      #for i in range(len(product)):
+            #if product[i].id == id:
+                  #del product[i]
+                  #return "product_delete"
